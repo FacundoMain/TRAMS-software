@@ -1,3 +1,4 @@
+__author__ = 'Alejo Chacon and Facundo Main'
 import SimpleITK as sitk
 import os
 import time

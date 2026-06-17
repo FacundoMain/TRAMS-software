@@ -1,3 +1,4 @@
+__author__ = 'Alejo Chacon and Facundo Main'
 import SimpleITK as sitk
 
 def subtract_mri(mri_t1, mri_t2):

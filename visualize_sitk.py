@@ -1,4 +1,4 @@
-__author__ = 'Alejo Chacon'
+__author__ = 'Alejo Chacon and Facundo Main'
 import SimpleITK as sitk
 import matplotlib.pyplot as plt
 import numpy as np

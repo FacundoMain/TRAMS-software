@@ -1,4 +1,4 @@
-__author__ = 'Alejo Chacon'
+__author__ = 'Alejo Chacon and Facundo Main'
 import pydicom
 import tkinter as tk
 from tkinter import filedialog
