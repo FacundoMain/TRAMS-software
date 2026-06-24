@@ -125,7 +125,7 @@ def rgb_to_dicom(imagenes, metadatos):
             ("0008|0031", modification_time),           # Series Time
             ("0008|0021", modification_date),           # Series Date
             ("0008|0008", "DERIVED\\SECONDARY"),        # Image Type
-            ("0020|000E", f"1.2.826.0.1.3680043.2.1125.{modification_date}.1{modification_time}"),  # Series Instance UID
+            ("0020|000E", f"1.2.826.0.1.3680043.2.1125.{modification_date} .1{modification_time}"),  # Series Instance UID
             ("0020|0037", '\\'.join(map(str, (direction[0], direction[2], 0, direction[1], direction[3], 0)))),  # Image Orientation (Patient)
             ("0008|103E", metadatos[i].get("0008|103E", "") + " Processed-TRAM-RGB"),  # Series Description
             ("0028|0002", "3"),                         # Samples per Pixel
@@ -393,7 +393,7 @@ def monochrome_to_PET_dicom(imagenes, metadatos):
     print(f"Archivos DICOM guardados en: {output_folder}")
 
 
-def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro):
+def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
     # registrarion method, guarda la forma de registracion para ponerlo en la descripcion en la imagen Dicom
     # 1 = Registracion deformable
     # 2 = Registracion Rigida Externa
@@ -570,19 +570,13 @@ def export_registration_txt(transform):
             f.write("Datos directos")
             f.write(f"Transform type: {transform.GetName()}\n\n")
 
-            # -------------------------------------------------
-            # Centro de rotación
-            # -------------------------------------------------
             center = transform.GetCenter()
 
             f.write("Center of rotation (mm)\n")
             f.write(f"X = {center[0]:.6f}\n")
             f.write(f"Y = {center[1]:.6f}\n")
             f.write(f"Z = {center[2]:.6f}\n\n")
-
-            # -------------------------------------------------
-            # Traslación
-            # -------------------------------------------------
+              
             translation = transform.GetTranslation()
 
             f.write("Translation (mm)\n")
@@ -590,9 +584,6 @@ def export_registration_txt(transform):
             f.write(f"Ty = {translation[1]:.6f}\n")
             f.write(f"Tz = {translation[2]:.6f}\n\n")
 
-            # -------------------------------------------------
-            # Rotaciones
-            # -------------------------------------------------
             angle_x = math.degrees(transform.GetAngleX())
             angle_y = math.degrees(transform.GetAngleY())
             angle_z = math.degrees(transform.GetAngleZ())
@@ -602,9 +593,6 @@ def export_registration_txt(transform):
             f.write(f"Ry = {angle_y:.6f}\n")
             f.write(f"Rz = {angle_z:.6f}\n\n")
 
-            # -------------------------------------------------
-            # Matriz 3x3
-            # -------------------------------------------------
             matrix = transform.GetMatrix()
 
             f.write("Rotation Matrix (3x3)\n")
@@ -612,15 +600,6 @@ def export_registration_txt(transform):
             f.write(f"{matrix[0]:.6f}  {matrix[1]:.6f}  {matrix[2]:.6f}\n")
             f.write(f"{matrix[3]:.6f}  {matrix[4]:.6f}  {matrix[5]:.6f}\n")
             f.write(f"{matrix[6]:.6f}  {matrix[7]:.6f}  {matrix[8]:.6f}\n\n")
-
-            # -------------------------------------------------
-            # Matriz homogénea 4x4
-            # -------------------------------------------------
-            #f.write("Homogeneous Matrix (4x4)\n")
-            #f.write(f"{matrix[0]:.6f}  {matrix[1]:.6f}  {matrix[2]:.6f}  {translation[0]:.6f}\n")
-            #f.write(f"{matrix[3]:.6f}  {matrix[4]:.6f}  {matrix[5]:.6f}  {translation[1]:.6f}\n")
-            #f.write(f"{matrix[6]:.6f}  {matrix[7]:.6f}  {matrix[8]:.6f}  {translation[2]:.6f}\n")
-            #f.write("0.000000  0.000000  0.000000  1.000000\n")
 
             homogeneous = np.array([
             [matrix[0], matrix[1], matrix[2], translation[0]],

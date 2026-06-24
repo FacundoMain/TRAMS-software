@@ -59,6 +59,15 @@ asd1 = convert_3d_image_to_slices(t1_img)
 asd2 = convert_3d_image_to_slices(t2_img)
 compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Imágenes crudas")
 
+print("T1")
+print(t1_img.GetOrigin())
+print(t1_img.GetSpacing())
+print(t1_img.GetDirection())
+
+print("T2")
+print(t2_img.GetOrigin())
+print(t2_img.GetSpacing())
+print(t2_img.GetDirection())
 
 # PRUEBA MODIFICACION DE MISMA IMAGEN ANTES DE REGISTRAR
 #intensity = int(input("ingrese intensidad del cuadrado: "))
@@ -69,16 +78,6 @@ compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Im�
 
 #compare_mri(asd1, aux1, "t1 cruda", "t2 modificada", "Prueba de modificacion")
 
-print("Post lectura de las imagenees")
-print(t1_img.GetOrigin())
-print(t2_img.GetOrigin())
-
-print(t1_img.GetSpacing())
-print(t2_img.GetSpacing())
-
-print(t1_img.GetDirection())
-print(t2_img.GetDirection())
-
 exit = False
 while exit == False: 
 
@@ -87,22 +86,22 @@ while exit == False:
     time.sleep(2)
 
     satisfaction = False
-    while (satisfaction == False):
+    #while (satisfaction == False):
 
-        t1_list, t2_list, t1_img, resampled_img3D, tipo_registro = registration_tool(t1_img, t1_metadata, t2_img, t2_metadata)
+        #t1_list, t2_list, t1_img, resampled_img3D, tipo_registro = registration_tool(t1_img, t1_metadata, t2_img, t2_metadata)
 
         # Compara los resultados de la registracion
-        print("Verifique que la registracion haya sido aplicada correctamente")
-        time.sleep(2)
-        compare_mri(t1_list, t2_list, "t1 MRI", "t2 MRI", "Verifique que la registración se haya aplicado correctamente")
+        #print("Verifique que la registracion haya sido aplicada correctamente")
+        #time.sleep(2)
+        #compare_mri(t1_list, t2_list, "t1 MRI", "t2 MRI", "Verifique que la registración se haya aplicado correctamente")
 
-        resp0 = solicitar_respuesta_binaria("¿Está satisfecho con el resultado de la registración?")
-        if resp0 == True:
-            satisfaction = True
+        #resp0 = solicitar_respuesta_binaria("¿Está satisfecho con el resultado de la registración?")
+        #if resp0 == True:
+            #satisfaction = True
         
-        elif resp0 == False:
-            print("Intente con otro de los métodos disponibles")
-            time.sleep(2)
+        #elif resp0 == False:
+        #    print("Intente con otro de los métodos disponibles")
+        #    time.sleep(2)
 
     #prueba de Graficacion corte sagital
     #t1_list_sagital = convert_3d_image_to_sagital(t1_img)
@@ -113,6 +112,9 @@ while exit == False:
 
     #compare_mri_sagital(t1_list_sagital, t2_list_sagital, fixed_spacing, resampled_img3D_spacing, "t1 sagital", "t2 sagital", "Ver si se deforma")
     
+    #prueba de deformacion
+
+
     print("------")
     #print("Prueba de validacion")
     #print("Se realiza validacion de la registracion")
@@ -120,19 +122,41 @@ while exit == False:
     #print("Fin de prueba..")
 
     print("Prueba de exportacion de archivo")
-    transform = get_transform()
-    export_registration_txt(transform)
+    #transform = get_transform()
+    #export_registration_txt(transform)
 
-    print("Aguarde mientras se procesan las resonancias")
+    #print("Aguarde mientras se procesan las resonancias")
     # modifico la imagen moving
     #modified_list = modify_image(t2_list)
 
     # Se restan las resonancias
-    subtraction = subtract_mri(t1_list, t2_list)
-    #subtraction_3d = subtract_mri_3d(t1_img, resampled_img3D)
+    #subtraction = subtract_mri(t1_list, t2_list)
+    imagen_3dt2_nula = subtract_mri_3d(t2_img, t2_img)
+    t1_list = convert_3d_image_to_slices(t1_img)
+    t2_list = convert_3d_image_to_slices(t2_img)
+    imagen_2dt2_nula = convert_3d_image_to_slices(imagen_3dt2_nula)
+    compare_mri(t1_list, t2_list, "Lista imagenes temprana", "Lista imagenes tardia", "Comparacion imagenes originales")
+    compare_mri(t1_list, imagen_2dt2_nula, "Lista imagenes temprana", "Resta consigo misma", "Comparacion imagenes original y restada")
+    t2_intensidad_alreves = subtract_mri(t2_list, imagen_2dt2_nula,) # porque se respeta el el flujo de programa original
+    tram = lut_and_clipping_manager(t2_intensidad_alreves, lut='jet')
+    compare_mri(t2_list, tram, "Imagen tardia negativa", "tram", "Comparacion")
 
+    # guardado PET
+    # Convertir la resta de resonancias en una imagen SimpleITK y recastearla como un entero de 16 bits
+    subtraction_sitk = []
+    for s_img in t2_intensidad_alreves:
+        sub = sitk.Cast(s_img, sitk.sitkInt16)
+        subtraction_sitk.append(sub)
+
+    tram_pet = subtraction_sitk
+    compare_mri(tram, tram_pet, "RGB", "PET format", "TRAM RGB y TRAM adaptado para PET-CT")    
+
+    resp7 = solicitar_respuesta_binaria("¿Desea guardar el resultado como PET?")
+    if(resp7 == True):    
+        monochrome_to_PET_dicom(tram_pet, t1_metadata, t2_img)
+    
     #compare_mri(t2_list, subtraction, "Imagen modificada", "Subtraction", "Comparacion imagen modificada y sustraccion")
-
+    break
     #print("validacion de sustraccion")
     #validate_subtraction_2d(t1_list, t2_list, subtraction)
 
@@ -144,10 +168,10 @@ while exit == False:
     # Se aplica la LUT
     print("A continuación se muestran el TRAM crudo y el histograma de la resta en escala de grises")
     print("Utilice la información del histograma para decidir si quiere recortarlo y mejorar la interpretacion de la imagen")
-    tram = lut_and_clipping_manager(subtraction, lut='jet')
+    #tram = lut_and_clipping_manager(subtraction, lut='jet')
 
     # Comprobar histograma
-    plot_histograms_with_lut(subtraction, tram)
+    #plot_histograms_with_lut(subtraction, tram)
 
     # Ajuste manual de los percentiles de la LUT
     resp1 = solicitar_respuesta_binaria("¿Desea ajustar el recorte de valores en la LUT a color?")
@@ -187,25 +211,25 @@ while exit == False:
         exit = True
 
 
-print("Se muestran la imagen RM temprana y TRAMS: ")
-compare_mri(t1_list, tram, "T1", "TRAM", "Comparacion de T1 y TRAM")
+#print("Se muestran la imagen RM temprana y TRAMS: ")
+#compare_mri(t1_list, tram, "T1", "TRAM", "Comparacion de T1 y TRAM")
 # Convertir la resta de resonancias en una imagen SimpleITK y recastearla como un entero de 16 bits
-subtraction_sitk = []
-for s_img in subtraction:
+#subtraction_sitk = []
+#for s_img in subtraction:
     sub = sitk.Cast(s_img, sitk.sitkInt16)
     subtraction_sitk.append(sub)
 
 # Graficar el TRAM RGB y el TRAM PET-CT 
-print("Se muestran el TRAM a color y la version PET-CT en escala de grises exportable a ARIA")
-print("El TRAM PET-CT no se recorta ya que la LUT puede ser ajustada dentro de ARIA")
-time.sleep(5)
-tram_pet = subtraction_sitk
-compare_mri(tram, tram_pet, "RGB", "PET format", "TRAM RGB y TRAM adaptado para PET-CT")
+#print("Se muestran el TRAM a color y la version PET-CT en escala de grises exportable a ARIA")
+#print("El TRAM PET-CT no se recorta ya que la LUT puede ser ajustada dentro de ARIA")
+#time.sleep(5)
+#tram_pet = subtraction_sitk
+#compare_mri(tram, tram_pet, "RGB", "PET format", "TRAM RGB y TRAM adaptado para PET-CT")
 
 # Se pregunta si el usuario quiere guardar los TRAMs obtenidos
-resp6 = solicitar_respuesta_binaria("¿Desea guardar el resultado RGB?")
-if(resp6 == True):
-    rgb_tram = []
+#resp6 = solicitar_respuesta_binaria("¿Desea guardar el resultado RGB?")
+#if(resp6 == True):
+#    rgb_tram = []
 
     for img in tram:
         img_R = img[0]
@@ -222,8 +246,8 @@ if(resp6 == True):
     
     rgb_to_dicom(rgb_tram, t1_metadata)
 
-resp7 = solicitar_respuesta_binaria("¿Desea guardar el resultado como PET?")
-if(resp7 == True):    
+#resp7 = solicitar_respuesta_binaria("¿Desea guardar el resultado como PET?")
+#if(resp7 == True):    
     monochrome_to_PET_dicom(tram_pet, t1_metadata, resampled_img3D, tipo_registro)
 
 print("")
