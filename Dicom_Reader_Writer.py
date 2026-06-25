@@ -427,10 +427,11 @@ def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
     spacing_3D = np.array(imagen3D.GetSpacing())    # es cuanto mide en mm cada lado del voxel. En Z responde a la separacion entre slices
     direction_3D = np.array(imagen3D.GetDirection()).reshape(3,3)   # indica la direccion exacta de los vectores unitarios
 
-    row = direction_3D[0]   # componentes del vector direccion de X 
-    col = direction_3D[1]   # componentes del vector direecion de Y 
-    normal = np.cross(row, col)     # componente del vector dirrecion de Z, corresponde hacia donde avanza el estudio
-
+    row = direction_3D[:, 0]   # componentes del vector direccion de X 
+    col = direction_3D[:, 1]   # componentes del vector direecion de Y 
+    #normal = np.cross(row, col)     # componente del vector dirrecion de Z, corresponde hacia donde avanza el estudio
+    normal = direction_3D[:, 2] 
+    
     orientation = list(row) + list(col)     # orientacion del paciente
 
     # Tags que se van a copiar

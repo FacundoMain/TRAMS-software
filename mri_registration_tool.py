@@ -127,7 +127,7 @@ def precise_registration(fixed_image, moving_image):
     # RANDOM (Aleatorio, toma puntos al azar pero puede dar resultados inconsistentes)
     registration_method.SetMetricSamplingStrategy(registration_method.NONE)
     # Porcentaje de pixeles tomados para el muestreo (Comentar si uso muestreo denso)
-    # registration_method.SetMetricSamplingPercentage(0.25)
+    #registration_method.SetMetricSamplingPercentage(0.25)
 
     # Interpolador lineal para precisión
     registration_method.SetInterpolator(sitk.sitkBSpline)
@@ -503,7 +503,6 @@ def set_final_transform():
         composite.AddTransform(DEFORMABLE_TRANSFORM)
 
         FINAL_TRANSFORM = composite
-
 
 
 def get_transform():
