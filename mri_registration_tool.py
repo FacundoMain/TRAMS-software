@@ -8,6 +8,7 @@ from RegisterImages.WithDicomReg import registerDicom
 import tkinter as tk
 from tkinter import filedialog
 from back_to_slices import convert_3d_image_to_slices
+from ROI_selection import select_roi_mask
 
 # Constantes
 DEFORMABLE = 1
@@ -189,7 +190,7 @@ def rigid_registration (fixed_image, moving_image):
         fixed_float,
         moving_float,
         sitk.Euler3DTransform(),
-        sitk.CenteredTransformInitializerFilter.GEOMETRY
+        sitk.CenteredTransformInitializerFilter.MOMENTS
     )
 
     global RIGID_TRANSFORM
@@ -199,15 +200,15 @@ def rigid_registration (fixed_image, moving_image):
     
     # metrica
     registration_method.SetMetricAsMattesMutualInformation(numberOfHistogramBins=100)   #de 50 a 100
-    registration_method.SetMetricSamplingStrategy(registration_method.RANDOM)
-    registration_method.SetMetricSamplingPercentage(0.5)  # se cambia 0.2 a 0.5
+    registration_method.SetMetricSamplingStrategy(registration_method.NONE)
+    #registration_method.SetMetricSamplingPercentage(0.5)  # se cambia 0.2 a 0.5
 
     # interpolador
     registration_method.SetInterpolator(sitk.sitkLinear)
 
     # optimizador
     registration_method.SetOptimizerAsGradientDescent(
-        learningRate = 0.5, #  ANTES ERA 1.0
+        learningRate = 0.1, #  ANTES ERA 1.0
         numberOfIterations = 150,   # se cambia de 100 a 150
         convergenceMinimumValue = 1e-6,
         convergenceWindowSize = 10
@@ -263,6 +264,104 @@ def rigid_registration (fixed_image, moving_image):
         moving_image.GetPixelID()
     )
     return resampled_image
+
+
+def rigid_registration_withMask(fixed_image, moving_image, fixed_mask):
+
+    fixed_float = sitk.Cast(fixed_image, sitk.sitkFloat32)
+    moving_float = sitk.Cast(moving_image, sitk.sitkFloat32)
+
+    print("Iniciando transformación rígida utilizando ROI...")
+
+    initial_transform = sitk.CenteredTransformInitializer(
+        fixed_float,
+        moving_float,
+        sitk.Euler3DTransform(),
+        sitk.CenteredTransformInitializerFilter.MOMENTS
+    )
+
+    global RIGID_TRANSFORM
+
+    registration_method = sitk.ImageRegistrationMethod()
+
+    # metrica
+    registration_method.SetMetricAsMattesMutualInformation(
+        numberOfHistogramBins=100   # antes estaba en 100
+    )
+
+    registration_method.SetMetricSamplingStrategy(
+        registration_method.NONE
+    )
+
+    # Sólo se utiliza la ROI de la imagen fija
+    registration_method.SetMetricFixedMask(fixed_mask)
+
+    # interpolador
+    registration_method.SetInterpolator(
+        sitk.sitkLinear
+    )
+
+    # optimizador
+
+    registration_method.SetOptimizerAsGradientDescent(
+        learningRate=0.1,
+        numberOfIterations=150,
+        convergenceMinimumValue=1e-7,
+        convergenceWindowSize=10
+    )
+
+    registration_method.SetOptimizerScalesFromPhysicalShift()
+
+    # multiresolucion
+
+    registration_method.SetShrinkFactorsPerLevel([4, 2, 1])
+    registration_method.SetSmoothingSigmasPerLevel([1, 0.5, 0])
+    registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
+
+    # transformacion inicial
+
+    registration_method.SetInitialTransform(
+        initial_transform,
+        inPlace=False
+    )
+
+    before = registration_method.MetricEvaluate(
+        fixed_float,
+        moving_float
+    )
+
+    final_transform = registration_method.Execute(
+        fixed_float,
+        moving_float
+    )
+
+    RIGID_TRANSFORM = final_transform
+
+    after = registration_method.GetMetricValue()
+
+    print("Metric before:", before)
+    print("Metric after :", after)
+
+    print(
+        registration_method.GetOptimizerStopConditionDescription()
+    )
+
+    if isinstance(final_transform, sitk.CompositeTransform):
+        print(final_transform.GetNumberOfTransforms())
+
+    # resample
+    
+    resampled_image = sitk.Resample(
+        moving_image,
+        fixed_image,
+        final_transform,
+        sitk.sitkBSpline,
+        0.0,
+        moving_image.GetPixelID()
+    )
+
+    return resampled_image
+
 
 # registracion deformable, tipo B spline
 def nonrigid_registration (fixed_image, moving_image):
@@ -455,13 +554,13 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
             elif resp1 in ["interno", "interna", "int"]:
 
                 # Elijo el método de registración deseado
-                print("Este programa cuenta con dos estrategias de registro interno:")
+                print("Este programa cuenta con dos estrategias de registro rigido interno:")
                 time.sleep(1)
-                print("Registro rápido: se ejecuta a mayor velocidad pero puede tener errores")
+                print("Registro rigido basico: se ejecuta a mayor velocidad pero puede tener errores")
                 time.sleep(1)
-                print("Registro preciso: es más lento pero el resultado tiene un gran grado de exactitúd")
+                print("Registro con ROI: implica realizar una seleccion donde se enfoque la registracion")
 
-                resp3 = input("Ingrese el método de registro deseado (Preciso/Rápido): ").strip().lower()
+                resp3 = input("Ingrese el método de registro deseado (ROI/Rápido): ").strip().lower()
 
                 if resp3 in ["rápida", "rapida", "rápido", "rapido"]:
                     print("Aguarde mientras se registran los estudios")
@@ -472,12 +571,15 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
                     aux = True
                     tipo_registro = RINTERNAL       # 3 rigida interna
 
-                elif resp3 in ["precisa", "preciso"]:
+                elif resp3 in ["conROI", "ROI", "roi", "conroi", "region"]:
                     print("Aguarde mientras se registran los estudios, esto puede tomar varios minutos dependiendo de la cantidad de cortes y el grado de diferencia")
-                    resampled_t2 = precise_registration(t1_image, t2_image)
+                    #resampled_t2 = precise_registration(t1_image, t2_image)
+                    mask = select_roi_mask(t1_image)
+                    resampled3D = rigid_registration_withMask (t1_image, t2_image, mask)
                     t1_list = convert_3d_image_to_slices(t1_image)
-                    t2_list = convert_3d_image_to_slices(resampled_t2)
+                    t2_list = convert_3d_image_to_slices(resampled3D)
                     aux = True
+                    tipo_registro = RINTERNAL
                 else:
                     print("Respuesta inválida, intente nuevamente")
             else:
