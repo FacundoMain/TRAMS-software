@@ -13,7 +13,8 @@ from ROI_selection import select_roi_mask
 # Constantes
 DEFORMABLE = 1
 REXTERNAL = 2
-RINTERNAL = 3
+RINTERNALBASIC = 3
+RINTERNALROI = 4
 
 # Variable de la transformacion, se utilizara para la validacion
 FINAL_TRANSFORM = None
@@ -245,13 +246,12 @@ def rigid_registration (fixed_image, moving_image):
     registration_method.GetOptimizerStopConditionDescription()
     )
 
-    if isinstance(final_transform, sitk.CompositeTransform):
-        print(
-            final_transform.GetNumberOfTransforms()
-        )
+    #if isinstance(final_transform, sitk.CompositeTransform):
+    #    print(
+    #        final_transform.GetNumberOfTransforms()
+    #    )
 
     #euler = final_transform.GetNthTransform(0)
-
     #print(euler)
 
     # aplicacion de registracion
@@ -284,7 +284,7 @@ def rigid_registration_withMask(fixed_image, moving_image, fixed_mask):
 
     registration_method = sitk.ImageRegistrationMethod()
 
-    # metrica
+    # Métrica
     registration_method.SetMetricAsMattesMutualInformation(
         numberOfHistogramBins=100   # antes estaba en 100
     )
@@ -296,13 +296,12 @@ def rigid_registration_withMask(fixed_image, moving_image, fixed_mask):
     # Sólo se utiliza la ROI de la imagen fija
     registration_method.SetMetricFixedMask(fixed_mask)
 
-    # interpolador
+    # Interpolador
     registration_method.SetInterpolator(
         sitk.sitkLinear
     )
 
-    # optimizador
-
+    # Optimizador
     registration_method.SetOptimizerAsGradientDescent(
         learningRate=0.1,
         numberOfIterations=150,
@@ -312,19 +311,18 @@ def rigid_registration_withMask(fixed_image, moving_image, fixed_mask):
 
     registration_method.SetOptimizerScalesFromPhysicalShift()
 
-    # multiresolucion
-
+    # Multiresolucion
     registration_method.SetShrinkFactorsPerLevel([4, 2, 1])
     registration_method.SetSmoothingSigmasPerLevel([1, 0.5, 0])
     registration_method.SmoothingSigmasAreSpecifiedInPhysicalUnitsOn()
 
-    # transformacion inicial
-
+    # Transformacion inicial
     registration_method.SetInitialTransform(
         initial_transform,
         inPlace=False
     )
 
+    # Métrica de evaluación antes de aplicar la transformación
     before = registration_method.MetricEvaluate(
         fixed_float,
         moving_float
@@ -337,20 +335,17 @@ def rigid_registration_withMask(fixed_image, moving_image, fixed_mask):
 
     RIGID_TRANSFORM = final_transform
 
+    # Métrica de evaluacion luego de la transformacion
     after = registration_method.GetMetricValue()
 
     print("Metric before:", before)
     print("Metric after :", after)
-
-    print(
-        registration_method.GetOptimizerStopConditionDescription()
-    )
+    print(registration_method.GetOptimizerStopConditionDescription())
 
     if isinstance(final_transform, sitk.CompositeTransform):
         print(final_transform.GetNumberOfTransforms())
 
-    # resample
-    
+    # Resample
     resampled_image = sitk.Resample(
         moving_image,
         fixed_image,
@@ -463,7 +458,6 @@ def nonrigid_registration (fixed_image, moving_image):
             final_transform.GetNumberOfTransforms()
         )
 
-
     # resample final
     resampled_image = sitk.Resample(
         resampled_image,
@@ -478,13 +472,13 @@ def nonrigid_registration (fixed_image, moving_image):
 
 # cambio en la funcion registrarion_tool. Se devuelve la imagen volumentrica 3D resampleada
 # esto se hace para despues obtener los parametros asociados al Spacing, Origin y DIrection
-# para poder realizar la escritura de los TAGs Dicom de manera correcta
+# para poder realizar la escritura de los TAGs DICOM de manera correcta
 
 def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
     """ 
     Permite al usuario elegir entre todas las opciones de registro disponibles: Externo,  cual requiere de un archivo DICOM 
     con una matriz de transformación; o Interno, el cual aplica uno de los algoritmos de registración disponibles (registro 
-    rápido pero poco exacto o registro preciso pero con costo computacional alto). Recibe dos variables con matrices 3D con los
+    deformable, registro rigido basico o registro rigido con seleccion de ROI). Recibe dos variables con matrices 3D con los
     cortes de las resonancias en t1 y t2, junto con sus metadatos y devuelve dos listas con los cortes de los estudios, uno de los
     cuales ha sido registrado respecto del otro 
     
@@ -497,6 +491,9 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
     Returns:
     :param t1_list: stack de los cortes de la resonancia t1
     :param t2_list: stack de los cortes de la resonancia t2
+    :param t1_image: imagen fixed 3D.
+    :param resampled3D: imagen moving 3D registrada
+    :param tipo_registro: entero que indica el tipo de registro aplicado
     """
 
     aux = False
@@ -569,7 +566,7 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
                     t1_list = convert_3d_image_to_slices(t1_image)
                     t2_list = convert_3d_image_to_slices(resampled3D)
                     aux = True
-                    tipo_registro = RINTERNAL       # 3 rigida interna
+                    tipo_registro = RINTERNALBASIC       # 3 rigida interna basica
 
                 elif resp3 in ["conROI", "ROI", "roi", "conroi", "region"]:
                     print("Aguarde mientras se registran los estudios, esto puede tomar varios minutos dependiendo de la cantidad de cortes y el grado de diferencia")
@@ -579,7 +576,7 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
                     t1_list = convert_3d_image_to_slices(t1_image)
                     t2_list = convert_3d_image_to_slices(resampled3D)
                     aux = True
-                    tipo_registro = RINTERNAL
+                    tipo_registro = RINTERNALROI        # 4 rigida interna roi
                 else:
                     print("Respuesta inválida, intente nuevamente")
             else:
@@ -595,9 +592,7 @@ def set_final_transform():
 
     if (RIGID_TRANSFORM is not None and DEFORMABLE_TRANSFORM is None):
         FINAL_TRANSFORM = RIGID_TRANSFORM
-        print("tranformacion rigida")
-        #print(FINAL_TRANSFORM)
-
+        
     elif (RIGID_TRANSFORM is not None and DEFORMABLE_TRANSFORM is not None):
 
         composite = sitk.CompositeTransform(3)

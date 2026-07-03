@@ -40,8 +40,6 @@ time.sleep(3)
 # partir de un .txt que se encuentra en la carpeta del main
 #instalar_faltantes_desde_requerimientos()
 
-
-
 # Cargo las imágenes que se utilizan para el protocolo
 print("Seleccione la carpeta en la que se encuentra la resonancia temprana.")
 time.sleep(2)
@@ -58,25 +56,6 @@ print(f"Se cargó la imagen tardía desde la carpeta: {t2_path}")
 asd1 = convert_3d_image_to_slices(t1_img)
 asd2 = convert_3d_image_to_slices(t2_img)
 compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Imágenes crudas")
-
-print("T1")
-print(t1_img.GetOrigin())
-print(t1_img.GetSpacing())
-print(t1_img.GetDirection())
-
-print("T2")
-print(t2_img.GetOrigin())
-print(t2_img.GetSpacing())
-print(t2_img.GetDirection())
-
-# PRUEBA MODIFICACION DE MISMA IMAGEN ANTES DE REGISTRAR
-#intensity = int(input("ingrese intensidad del cuadrado: "))
-#t2_img = insert_cube(t2_img, intensity=intensity)
-#t2_img = apply_rotation(t2_img)
-#t2_img = apply_translation(t2_img)      
-#aux1 = convert_3d_image_to_slices(t2_img)
-
-#compare_mri(asd1, aux1, "t1 cruda", "t2 modificada", "Prueba de modificacion")
 
 exit = False
 while exit == False: 
@@ -103,67 +82,13 @@ while exit == False:
             print("Intente con otro de los métodos disponibles")
             time.sleep(2)
 
-    #prueba de Graficacion corte sagital
-    #t1_list_sagital = convert_3d_image_to_sagital(t1_img)
-    #t2_list_sagital = convert_3d_image_to_sagital(resampled_img3D)
+    #print("Exportacion de archivo de registración")
+    #transform = get_transform()
+    #export_registration_txt(transform)
 
-    #fixed_spacing = np.array(t1_img.GetSpacing())ri
-    #resampled_img3D_spacing = np.array(resampled_img3D.GetSpacing())
-
-    #compare_mri_sagital(t1_list_sagital, t2_list_sagital, fixed_spacing, resampled_img3D_spacing, "t1 sagital", "t2 sagital", "Ver si se deforma")
-    
-    #prueba de deformacion
-
-
-    print("------")
-    #print("Prueba de validacion")
-    #print("Se realiza validacion de la registracion")
-    #run_validation(tipo_registro)
-    #print("Fin de prueba..")
-
-    print("Prueba de exportacion de archivo")
-    transform = get_transform()
-    export_registration_txt(transform)
-
-    #print("Aguarde mientras se procesan las resonancias")
-    # modifico la imagen moving
-    #modified_list = modify_image(t2_list)
-
+    print("Aguarde mientras se procesan las resonancias")
     # Se restan las resonancias
     subtraction = subtract_mri(t1_list, t2_list)
-    #imagen_3dt2_nula = subtract_mri_3d(t2_img, t2_img)
-    #t1_list = convert_3d_image_to_slices(t1_img)
-    #t2_list = convert_3d_image_to_slices(t2_img)
-    #imagen_2dt2_nula = convert_3d_image_to_slices(imagen_3dt2_nula)
-    #compare_mri(t1_list, t2_list, "Lista imagenes temprana", "Lista imagenes tardia", "Comparacion imagenes originales")
-    #compare_mri(t1_list, imagen_2dt2_nula, "Lista imagenes temprana", "Resta consigo misma", "Comparacion imagenes original y restada")
-    #t2_intensidad_alreves = subtract_mri(t2_list, imagen_2dt2_nula,) # porque se respeta el el flujo de programa original
-    #tram = lut_and_clipping_manager(t2_intensidad_alreves, lut='jet')
-    #compare_mri(t2_list, tram, "Imagen tardia negativa", "tram", "Comparacion")
-
-    # guardado PET
-    # Convertir la resta de resonancias en una imagen SimpleITK y recastearla como un entero de 16 bits
-    #subtraction_sitk = []
-    #for s_img in subtraction:
-    #    sub = sitk.Cast(s_img, sitk.sitkInt16)
-    #    subtraction_sitk.append(sub)
-
-    #tram_pet = subtraction_sitk
-    #compare_mri(tram, tram_pet, "RGB", "PET format", "TRAM RGB y TRAM adaptado para PET-CT")    
-
-    #resp7 = solicitar_respuesta_binaria("¿Desea guardar el resultado como PET?")
-    #if(resp7 == True):    
-    #    monochrome_to_PET_dicom(tram_pet, t1_metadata, t2_img)
-    
-    #compare_mri(t2_list, subtraction, "Imagen modificada", "Subtraction", "Comparacion imagen modificada y sustraccion")
-    #break
-    #print("validacion de sustraccion")
-    #validate_subtraction_2d(t1_list, t2_list, subtraction)
-
-    #validate_subtraction_3d(t1_img, resampled_img3D, subtraction_3d)
-    
-    # Ver resta en escala de grises
-    #show_sitk_image(subtraction, "gray")
 
     # Se aplica la LUT
     print("A continuación se muestran el TRAM crudo y el histograma de la resta en escala de grises")

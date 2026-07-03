@@ -52,13 +52,20 @@ def generate_uid():
 
 
 
-def rgb_to_dicom(imagenes, metadatos):
+def rgb_to_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
     """
     Crea elementos DICOM RGB a partir de una lista de imágenes. Copia los metadatos específicos del paciente de una lista de metadatos recibida por parámetro y 
     genera los específicos del estudio.
     :param imagenes: lista de imágenes SimpleITK RGB (imagenes bidimensionales con pixeles vectoriales)
     :param metadatos: lista de diccionarios (dict) con los metadatos de una de las resonancias utulizadas para generar el TRAM
     """
+    TIPOS_REGISTRO = {
+        1: "Deformable Registration",
+        2: "RigidExternal Registration",
+        3: "RigidInternal Basic Registration",
+        4: "RigidInternal ROI Registration"
+    }   
+
     # Abrir un cuadro de diálogo para que el usuario seleccione la carpeta donde se guardarán los archivos DICOM
     root = tk.Tk()
     root.withdraw()  # Ocultar la ventana principal de Tkinter
@@ -78,6 +85,18 @@ def rgb_to_dicom(imagenes, metadatos):
     writer = sitk.ImageFileWriter()
     writer.KeepOriginalImageUIDOn()
 
+    # Parametros de la imagen 3D
+    origen_3D = np.array(imagen3D.GetOrigin())      # es la coordenada fisica en mm del voxel (0,0,0), vector con 3 valores.
+    spacing_3D = np.array(imagen3D.GetSpacing())    # es cuanto mide en mm cada lado del voxel. En Z responde a la separacion entre slices
+    direction_3D = np.array(imagen3D.GetDirection()).reshape(3,3)   # indica la direccion exacta de los vectores unitarios
+
+    row = direction_3D[:, 0]   # componentes del vector direccion de X 
+    col = direction_3D[:, 1]   # componentes del vector direecion de Y 
+    #normal = np.cross(row, col)     # componente del vector dirrecion de Z, corresponde hacia donde avanza el estudio
+    normal = direction_3D[:, 2] 
+    
+    orientation = list(row) + list(col)     # orientacion del paciente
+
     # Tags que se van a copiar
     # se agrega el Tag de Image Orientation Patient
     tags_to_copy = [
@@ -91,11 +110,8 @@ def rgb_to_dicom(imagenes, metadatos):
         "0018|0020", # Scanning Sequence
         "0018|0021", # Sequence Variant
         "0018|0022", # Scan Options
-        "0018|0050", # Slice Thickness
         "0020|1041", # Slice Location
-        "0018|5100", # Patient Position
-        "0020|0032" # Image Position Patient
-        #"0020|0037"  # Image Patient Orientation  
+        "0018|5100"  # Patient Position
     ]
 
     modification_time = time.strftime("%H%M%S")
@@ -117,8 +133,12 @@ def rgb_to_dicom(imagenes, metadatos):
         if img.GetNumberOfComponentsPerPixel() != 3:
             raise ValueError("La imagen no es RGB. Asegúrese de que la imagen tenga 3 componentes por píxel.")
 
-        # Configurar la dirección de la imagen
-        direction = img.GetDirection()
+        position = origen_3D + i * spacing_3D[2] * normal   # se calcula la posicion fisica del slice en el sistema de coorednadas del paciente
+        # origen_3D es la posicion fisica del voxel inicial
+        # i es el slice, i va de 0 a la cantidad de cortes - 1
+        # spacing_3D[2] corresponde a la distancia entre slices en mm
+        # normal es un vector de 3 dimensiones que tiene la direccion de avance de los cortes
+        
         series_tag_values = [
             (k, metadatos[i].get(k, '')) for k in tags_to_copy if k in metadatos[i]
         ] + [
@@ -126,8 +146,11 @@ def rgb_to_dicom(imagenes, metadatos):
             ("0008|0021", modification_date),           # Series Date
             ("0008|0008", "DERIVED\\SECONDARY"),        # Image Type
             ("0020|000E", f"1.2.826.0.1.3680043.2.1125.{modification_date} .1{modification_time}"),  # Series Instance UID
-            ("0020|0037", '\\'.join(map(str, (direction[0], direction[2], 0, direction[1], direction[3], 0)))),  # Image Orientation (Patient)
-            ("0008|103E", metadatos[i].get("0008|103E", "") + " Processed-TRAM-RGB"),  # Series Description
+            ("0020|0037", '\\'.join(map(str, orientation))),  # Image Orientation (Patient)
+            ("0020|0032", '\\'.join(map(str, position))), # Image Position
+            ("0028|0030", f"{spacing_3D[0]}\\{spacing_3D[1]}"), # Pixel spacing
+            ("0018|0050", str(spacing_3D[2])),  # Slice Thickness
+            ("0008|103E", metadatos[i].get("0008|103E", "") + " Processed-TRAM-RGB-" + TIPOS_REGISTRO[tipo_registro]),  # Series Description
             ("0028|0002", "3"),                         # Samples per Pixel
             ("0028|0004", "RGB"),                       # Photometric Interpretation
             ("0028|0006", "0"),                         # Planar Configuration
@@ -140,7 +163,7 @@ def rgb_to_dicom(imagenes, metadatos):
             ("0020|000D", new_study_instance_uid),      # New Study Instance UID
             ("0020|0010", new_study_id),                # New Study ID
             ("0020|0052", new_frame_of_reference_uid),  # Frame of Reference UID
-            ("0008|0070", "Alejo Chacon"),              # Manufacturer
+            ("0008|0070", "Facundo Main"),              # Manufacturer
             ("0018|0023", ""),                          # MR Acquisition Type
             ("0008|0080", "CEMENER"),                   # Institution Name
             ("0008|1030", "TRAM")                       # Study Description
@@ -401,7 +424,8 @@ def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
     TIPOS_REGISTRO = {
         1: "Deformable Registration",
         2: "RigidExternal Registration",
-        3: "RigidInternal Registration"
+        3: "RigidInternal Basic Registration",
+        4: "RigidInternal ROI Registration"
     }    
     # Abrir un cuadro de diálogo para que el usuario seleccione la carpeta donde se guardarán los archivos DICOM
     root = tk.Tk()
@@ -436,12 +460,16 @@ def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
 
     # Tags que se van a copiar
     tags_to_copy = [
-        "0010|0010",  # Patient Name
-        "0010|0020",  # Patient ID
-        "0010|0030",  # Patient Birth Date
-        "0008|0050",  # Accession Number
-        "0020|1040",  # Position Reference Indicator
-        "0020|1041",  # Slice Location
+        "0010|0010", # Patient Name
+        "0010|0020", # Patient ID
+        "0010|0030", # Patient Birth Date
+        "0008|0050", # Accession Number
+        "0020|1040", # Position Reference Indicator
+        "0018|0081", # Echo Time
+        "0018|0020", # Scanning Sequence
+        "0018|0021", # Sequence Variant
+        "0018|0022", # Scan Options
+        "0020|1041", # Slice Location
         "0018|5100"  # Patient Position
     ]
 
@@ -467,9 +495,7 @@ def monochrome_to_PET_dicom(imagenes, metadatos, imagen3D, tipo_registro = 3):
         if img.GetNumberOfComponentsPerPixel() != 1:
             raise ValueError("La imagen no es monocromática. Asegúrese de que la imagen tenga 1 componente por píxel.")
 
-        # Configurar la dirección de la imagen
         # se cambia la Image orientation del paciente
-
         position = origen_3D + i * spacing_3D[2] * normal   # se calcula la posicion fisica del slice en el sistema de coorednadas del paciente
         # origen_3D es la posicion fisica del voxel inicial
         # i es el slice, i va de 0 a la cantidad de cortes - 1
