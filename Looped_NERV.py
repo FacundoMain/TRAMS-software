@@ -57,6 +57,14 @@ asd1 = convert_3d_image_to_slices(t1_img)
 asd2 = convert_3d_image_to_slices(t2_img)
 compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Imágenes crudas")
 
+#modified = insert_cube(t1_img)
+#modified_list = convert_3d_image_to_slices(modified)
+#subtracted = subtract_mri(asd1, modified_list)
+#compare_mri(asd1, modified_list, "Fantoma digital original", "Fantoma digital modificado", "Validacion Intensidad")
+#compare_mri(modified_list, subtracted, "Fantoma digital modificado", "Substraccion", "Validacion Intensidad")
+
+
+
 exit = False
 while exit == False: 
 
@@ -82,9 +90,13 @@ while exit == False:
             print("Intente con otro de los métodos disponibles")
             time.sleep(2)
 
-    #print("Exportacion de archivo de registración")
-    #transform = get_transform()
-    #export_registration_txt(transform)
+    print("Exportacion de archivo de registración")
+    transform = get_transform()
+    
+    export_registration_txt(transform)
+
+    #print ("validacion")
+    #run_validation(tipo_registro)
 
     print("Aguarde mientras se procesan las resonancias")
     # Se restan las resonancias
@@ -169,7 +181,7 @@ if(resp6 == True):
 
         rgb_tram.append(rgb)
     
-    rgb_to_dicom(rgb_tram, t1_metadata)
+    rgb_to_dicom(rgb_tram, t1_metadata, resampled_img3D, tipo_registro)
 
 resp7 = solicitar_respuesta_binaria("¿Desea guardar el resultado como PET?")
 if(resp7 == True):    

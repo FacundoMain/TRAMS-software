@@ -8,7 +8,7 @@ from mri_registration_tool import get_transform
 # esto es cuanto esta trasladado. Ir cambiando para cada caso. Ver paper TG132
 # caso traslacion y rotacion
 GROUND_TRUTH_TRASLATION = [-5.07, 17.29, -18.06] # caso 2. BAD1 - BAD4
-VOXEL_DIMENSIONS = [1.83, 1.83, 3.0] 
+VOXEL_DIMENSIONS = [0.7, 0.7, 3.0] 
 GROUND_TRUTH_ROTATION = [-5, 8, 10] 
 
 def compute_translation_errors(ground_truth_translation, estimated_translation):

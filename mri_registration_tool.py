@@ -226,7 +226,7 @@ def rigid_registration (fixed_image, moving_image):
         initial_transform,
         inPlace=False
     )
-    before = registration_method.MetricEvaluate(fixed_float, moving_float)
+    #before = registration_method.MetricEvaluate(fixed_float, moving_float)
 
     # registracion
     final_transform = registration_method.Execute(
@@ -237,14 +237,14 @@ def rigid_registration (fixed_image, moving_image):
     RIGID_TRANSFORM = final_transform
     #print("Print de la final transform")
     #print(final_transform)
-    after = registration_method.GetMetricValue()
+    #after = registration_method.GetMetricValue()
 
-    print("Metric before:", before)
-    print("Metric after :", after)
+    #print("Metric before:", before)
+    #print("Metric after :", after)
 
-    print(
-    registration_method.GetOptimizerStopConditionDescription()
-    )
+    #print(
+    #registration_method.GetOptimizerStopConditionDescription()
+    #)
 
     #if isinstance(final_transform, sitk.CompositeTransform):
     #    print(
@@ -553,9 +553,9 @@ def registration_tool(t1_image, t1_metadata, t2_image, t2_metadata):
                 # Elijo el método de registración deseado
                 print("Este programa cuenta con dos estrategias de registro rigido interno:")
                 time.sleep(1)
-                print("Registro rigido basico: se ejecuta a mayor velocidad pero puede tener errores")
+                print("Registro rigido basico (validado)")
                 time.sleep(1)
-                print("Registro con ROI: implica realizar una seleccion donde se enfoque la registracion")
+                print("Registro con ROI: implica realizar una seleccion donde se enfoque la registracion (falta validar)")
 
                 resp3 = input("Ingrese el método de registro deseado (ROI/Rápido): ").strip().lower()
 
