@@ -15,12 +15,13 @@ import time
 from respuesta_binaria import solicitar_respuesta_binaria
 from mri_registration_tool import registration_tool, get_transform
 from validation import run_validation, validate_subtraction_2d, validate_subtraction_3d, insert_cube, apply_translation, apply_rotation
+from espectroscopia import cargar_capturas_mrs, mostrar_comparacion, buscar_corte_t1, generar_candidatos_t1, seleccionar_corte_t1
 
 # No borrar, son las funciones que se usan para descargar los paquetes necesarios para que el codigo funcione (Es la sección comentada al inicio del programa)
 from lut_inverter import invert_image_list
 #from update_manager import instalar_faltantes_desde_requerimientos
 
-from back_to_slices import convert_3d_image_to_slices, convert_3d_image_to_sagital
+from back_to_slices import convert_3d_image_to_slices, convert_3d_image_to_sagital, convert_3d_image_to_arrslices
 
 # Habilito el uso de ventanas
 root = tk.Tk()
@@ -55,6 +56,7 @@ print(f"Se cargó la imagen tardía desde la carpeta: {t2_path}")
 
 asd1 = convert_3d_image_to_slices(t1_img)
 asd2 = convert_3d_image_to_slices(t2_img)
+array_slicesT1 = convert_3d_image_to_arrslices(t1_img)
 compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Imágenes crudas")
 
 #modified = insert_cube(t1_img)
@@ -63,9 +65,29 @@ compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Im�
 #compare_mri(asd1, modified_list, "Fantoma digital original", "Fantoma digital modificado", "Validacion Intensidad")
 #compare_mri(modified_list, subtracted, "Fantoma digital modificado", "Substraccion", "Validacion Intensidad")
 
+## Pruebas script de Espectroscopia -- FUNCIONA ## 
+capturas_mrs = cargar_capturas_mrs()
+indice_detectado, correlacion = buscar_corte_t1(array_slicesT1, capturas_mrs[0])
+candidatos = generar_candidatos_t1 (indice_detectado, len(array_slicesT1), cantidad=7)
+indice_final = seleccionar_corte_t1 (
+    array_slicesT1, capturas_mrs[0], candidatos, indice_inicial = indice_detectado
+)
+if indice_final is not None:
+    mostrar_comparacion(array_slicesT1[indice_final], capturas_mrs, indice_final)
 
 
-exit = False
+#print("Seleccione la carpeta en la que se encuentra el TRAMS")
+#time.sleep(2)
+#trams_path = filedialog.askdirectory(title=f"Seleccione la carpeta que contiene la resonancia temprana")
+#trams_img, trams_metadata = get_dicom(trams_path)
+#print(f"Se cargó la imagen temprana desde la carpeta: {trams_path}")
+
+#tram_arrslices = convert_3d_image_to_arrslices(trams_img)
+#mostrar_comparacion (tram_arrslices[indice_final], capturas_mrs, indice_final)
+
+exit = True
+exit()
+
 while exit == False: 
 
     # Registro las imágenes. Se utiliza un loop que permite probar las distintas estrategias disponibles hasta quedar satisfecho
