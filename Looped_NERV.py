@@ -7,7 +7,7 @@ import tkinter as tk
 from tkinter import filedialog
 from subtract_mri import subtract_mri, subtract_mri_3d
 from visualize_sitk import show_sitk_image
-from Dicom_Reader_Writer import get_dicom, rgb_to_dicom, monochrome_to_PET_dicom, export_registration_txt
+from Dicom_Reader_Writer import get_dicom, get_dicom_rgb, rgb_to_dicom, monochrome_to_PET_dicom, export_registration_txt
 import SimpleITK as sitk
 import numpy as np 
 from comparar_percentiles_lut import comparar_percentiles
@@ -76,14 +76,14 @@ if indice_final is not None:
     mostrar_comparacion(array_slicesT1[indice_final], capturas_mrs, indice_final)
 
 
-#print("Seleccione la carpeta en la que se encuentra el TRAMS")
-#time.sleep(2)
-#trams_path = filedialog.askdirectory(title=f"Seleccione la carpeta que contiene la resonancia temprana")
-#trams_img, trams_metadata = get_dicom(trams_path)
-#print(f"Se cargó la imagen temprana desde la carpeta: {trams_path}")
+print("Seleccione la carpeta en la que se encuentra el TRAMS")
+time.sleep(2)
+trams_path = filedialog.askdirectory(title=f"Seleccione la carpeta que contiene la resonancia temprana")
+trams_img, trams_metadata = get_dicom_rgb(trams_path)
+print(f"Se cargó la imagen temprana desde la carpeta: {trams_path}")
 
-#tram_arrslices = convert_3d_image_to_arrslices(trams_img)
-#mostrar_comparacion (tram_arrslices[indice_final], capturas_mrs, indice_final)
+tram_arrslices = convert_3d_image_to_arrslices(trams_img)
+mostrar_comparacion (tram_arrslices[indice_final], capturas_mrs, indice_final)
 
 exit = True
 exit()

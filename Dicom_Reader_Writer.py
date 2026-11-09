@@ -8,6 +8,7 @@ from tkinter import filedialog
 import numpy as np
 import math
 
+
 def get_dicom(dicom_path):
     """
     Esta funcion permite al usuario explorar el disco y seleccionar una carpeta desde la cual cargar archivos DICOM (pensada para estudios de RMN 
@@ -44,7 +45,70 @@ def get_dicom(dicom_path):
     
     return image_3D, metadatos
 
+def get_dicom_rgb(dicom_path):
+    """
+    Lee una serie DICOM RGB desde una carpeta y devuelve:
 
+    :param dicom_path: Ruta de la carpeta con los archivos DICOM.
+    :return image_3D: Imagen 3D RGB de SimpleITK.
+    :return metadatos: Lista de diccionarios con los metadatos de cada corte.
+    """
+
+    carpeta = dicom_path
+
+    # Identificar las series DICOM de la carpeta
+    series_IDs = sitk.ImageSeriesReader.GetGDCMSeriesIDs(carpeta)
+
+    if not series_IDs:
+        raise ValueError(
+            f"La carpeta '{carpeta}' no contiene una serie DICOM."
+        )
+
+    # Obtener los archivos de la primera serie
+    series_file_names = list(sitk.ImageSeriesReader.GetGDCMSeriesFileNames(
+        carpeta, series_IDs[0]
+    ))
+
+    # Ordenar los archivos según el índice original del TRAM
+    # Ejemplo: TRAM.UID.Image.0000.dcm
+    import re
+
+    patron = re.compile(r"\.Image\.(\d+)\.dcm$", re.IGNORECASE)
+
+    series_file_names.sort(
+        key=lambda archivo: int(
+            patron.search(os.path.basename(archivo)).group(1)
+        )
+    )
+
+    # Configurar lector DICOM
+    series_reader = sitk.ImageSeriesReader()
+    series_reader.SetFileNames(series_file_names)
+
+    series_reader.MetaDataDictionaryArrayUpdateOn()
+    series_reader.LoadPrivateTagsOn()
+
+    # Leer la serie RGB
+    image_3D = series_reader.Execute()
+
+    # Verificar que las imágenes tengan tres componentes por píxel
+    if image_3D.GetNumberOfComponentsPerPixel() != 3:
+        raise ValueError(
+            "La serie DICOM no contiene imágenes RGB de tres componentes."
+        )
+
+    # Extraer metadatos
+    metadatos = [
+        {
+            key: series_reader.GetMetaData(i, key)
+            for key in series_reader.GetMetaDataKeys(i)
+        }
+        for i in range(image_3D.GetDepth())
+    ]
+
+    print(f"Serie DICOM RGB cargada: {image_3D.GetDepth()} cortes.")
+
+    return image_3D, metadatos
 
 def generate_uid():
     """Genera un UID de DICOM basándose en un UUID (Identificador Unico Universal)"""
