@@ -226,7 +226,7 @@ def _coincidencia_cerca_de_posicion(fuente, plantilla, escalas, centro, radio=10
 
     return mejor
 
-def buscar_corte_t1(cortes_t1, captura_mrs, top_k=15, factor_reduccion=0.30):
+def buscar_corte_t1(cortes_t1, captura_mrs, top_k=15, factor_reduccion=0.30, umbral_t1=0.95):
     """Busca el corte T1 más parecido a la anatomía de una captura MRS.
 
     No requiere selección manual de ROI. La captura MRS se recorta y se limpian
@@ -296,13 +296,26 @@ def buscar_corte_t1(cortes_t1, captura_mrs, top_k=15, factor_reduccion=0.30):
     resultados_iniciales.sort(key=lambda r: r[0], reverse=True)
     candidatos = resultados_iniciales[:min(top_k, len(resultados_iniciales))]
 
+    # Obtener la mejor correlación inicial
+    mejor_puntaje_inicial = resultados_iniciales[0][0]
+
+    # Verificar si existe una coincidencia suficiente con T1
+    if mejor_puntaje_inicial <= umbral_t1:
+
+        print("\nNo se encontró una coincidencia suficiente con T1.")
+        print(f"Mejor correlación inicial: {mejor_puntaje_inicial:.4f}")
+        print("Se deberá realizar una selección manual del corte TRAM.")
+
+        return None, mejor_puntaje_inicial
+    
     print("\n--- Preselección rápida ---")
     for puntaje, indice, escala, posicion in candidatos:
         print(
             f"Corte {indice}: correlación inicial = {puntaje:.4f}, "
             f"escala = {escala:.4f}, posición = ({posicion[0]:.1f}, {posicion[1]:.1f})"
         )
-     # Estimar una única transformación inicial a partir de los candidatos.
+
+    # Estimar una única transformación inicial a partir de los candidatos.
     escala_comun = float(np.median([r[2] for r in candidatos]))
     centro_comun = (
         float(np.median([r[3][0] for r in candidatos])),
