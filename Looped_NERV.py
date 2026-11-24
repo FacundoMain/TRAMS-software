@@ -68,19 +68,43 @@ compare_mri(asd1, asd2, "Resonancia t1 original", "Resonancia t2 original", "Im�
 ## Pruebas script de Espectroscopia -- FUNCIONA ## 
 capturas_mrs = cargar_capturas_mrs()
 indice_detectado, correlacion = buscar_corte_t1(array_slicesT1, capturas_mrs[0])
-candidatos = generar_candidatos_t1 (indice_detectado, len(array_slicesT1), cantidad=7)
-indice_final = seleccionar_corte_t1 (
-    array_slicesT1, capturas_mrs[0], candidatos, indice_inicial = indice_detectado
-)
-if indice_final is not None:
-    mostrar_comparacion(array_slicesT1[indice_final], capturas_mrs, indice_final)
 
+if indice_detectado is not None:
+    # MRS planificada sobre T1
+    print("MRS planificada sobre T1.")
+    candidatos = generar_candidatos_t1 (    
+        indice_detectado, len(array_slicesT1), cantidad=7
+    )
+    indice_final = seleccionar_corte_t1 (
+        array_slicesT1, capturas_mrs[0], candidatos, indice_inicial = indice_detectado
+    )
+
+else:
+
+    # No hay coincidencia sobre planificacion sobre T1
+    print("Planificación de MRS sobre T2-FLAIR.")
+    indice_manual = len(array_slicesT1) // 2
+
+    # Vector con todos los indices de la serie
+    candidatos = list(range(len(array_slicesT1)))
+
+    # Selección manual del corte
+    indice_final = seleccionar_corte_t1(
+        array_slicesT1, capturas_mrs[0], candidatos, indice_inicial = indice_manual
+    )
+
+if indice_final is not None:
+    mostrar_comparacion(
+        array_slicesT1[indice_final], capturas_mrs, indice_final
+    )
+else:
+    print("No se seleccionó ningún corte.")
 
 print("Seleccione la carpeta en la que se encuentra el TRAMS")
 time.sleep(2)
-trams_path = filedialog.askdirectory(title=f"Seleccione la carpeta que contiene la resonancia temprana")
+trams_path = filedialog.askdirectory(title=f"Seleccione la carpeta que contiene el TRAMS en RGB")
 trams_img, trams_metadata = get_dicom_rgb(trams_path)
-print(f"Se cargó la imagen temprana desde la carpeta: {trams_path}")
+print(f"Se cargó la imagen TRAMS desde la carpeta: {trams_path}")
 
 tram_arrslices = convert_3d_image_to_arrslices(trams_img)
 mostrar_comparacion (tram_arrslices[indice_final], capturas_mrs, indice_final)
