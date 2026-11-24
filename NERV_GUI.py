@@ -128,6 +128,7 @@ class SliceViewer(ttk.Frame):
         self._panels = []
         self._updating = False
         self.on_change = None  # callback(idx) al cambiar de corte
+        self.unit = "Corte"    # texto de la etiqueta ("Corte", "Captura", ...)
 
     # -- API --------------------------------------------------------------
     def clear(self):
@@ -174,7 +175,7 @@ class SliceViewer(ttk.Frame):
         for p in self._panels:
             a = p.arrs[self.idx]
             p.im.set_data(self._norm_rgb(a) if p.rgb else a)
-        self.label.config(text=f"Corte {self.idx + 1} / {self.n}")
+        self.label.config(text=f"{self.unit} {self.idx + 1} / {self.n}")
         self._updating = True
         self.slider.set(self.idx)
         self._updating = False
@@ -212,8 +213,8 @@ class RealBackend:
     demo = False
 
     def __init__(self):
-        from Dicom_Reader_Writer import get_dicom, rgb_to_dicom, monochrome_to_PET_dicom
-        from back_to_slices import convert_3d_image_to_slices
+        from Dicom_Reader_Writer import get_dicom, rgb_to_dicom, monochrome_to_PET_dicom, export_registration_txt
+        from back_to_slices import convert_3d_image_to_slices, convert_3d_image_to_arrslices
         import mri_registration_tool as mrt
         from subtract_mri import subtract_mri
         from apply_lut import lut_and_clipping_manager
@@ -222,6 +223,8 @@ class RealBackend:
         self._rgb_to_dicom = rgb_to_dicom
         self._pet_to_dicom = monochrome_to_PET_dicom
         self._to_slices = convert_3d_image_to_slices
+        self._to_arrays = convert_3d_image_to_arrslices
+        self._export_txt = export_registration_txt
         self._mrt = mrt
         self._subtract = subtract_mri
         self._lut = lut_and_clipping_manager
@@ -231,6 +234,9 @@ class RealBackend:
 
     def to_slices(self, img):
         return self._to_slices(img)
+
+    def to_arrays(self, img):
+        return self._to_arrays(img)  # lista de ndarrays 2D (lo que usa espectroscopia.py)
 
     def register(self, t1_img, t1_md, t2_img, t2_md, mode, fixed="t1"):
         """Replica las ramas de mri_registration_tool.registration_tool sin usar input().
@@ -276,7 +282,10 @@ class RealBackend:
             return self._lut(subtraction, clip, lut="jet")
         return self._lut(subtraction, lut="jet")
 
-    def export_rgb(self, tram, t1_md):
+    def export_registration(self):
+        self._export_txt(self._mrt.get_transform())
+
+    def export_rgb(self, tram, t1_md, resampled, tipo):
         rgb_tram = []
         for img in tram:
             R = sitk.GetArrayFromImage(img[0])
@@ -284,7 +293,7 @@ class RealBackend:
             B = sitk.GetArrayFromImage(img[2])
             rgb = sitk.GetImageFromArray(np.stack((R, G, B), axis=-1), isVector=True)
             rgb_tram.append(rgb)
-        self._rgb_to_dicom(rgb_tram, t1_md)
+        self._rgb_to_dicom(rgb_tram, t1_md, resampled, tipo)
 
     def export_pet(self, tram_pet, t1_md, resampled, tipo):
         self._pet_to_dicom(tram_pet, t1_md, resampled, tipo)
@@ -314,6 +323,12 @@ class DemoBackend:
         arr = sitk.GetArrayFromImage(img)
         return [sitk.GetImageFromArray(arr[i]) for i in range(arr.shape[0])]
 
+    def to_arrays(self, img):
+        return list(sitk.GetArrayFromImage(img))
+
+    def export_registration(self):
+        messagebox.showinfo("Demo", "En modo demo no se escribe ningún archivo de registración.")
+
     def register(self, t1_img, t1_md, t2_img, t2_md, mode, fixed="t1"):
         time.sleep(0.6)
         tipo = {"deformable": 1, "externa": 2, "interna": 3, "roi": 4}[mode]
@@ -338,7 +353,7 @@ class DemoBackend:
             out.append((rgba[..., :3] * 255).astype(np.uint8))
         return out
 
-    def export_rgb(self, tram, t1_md):
+    def export_rgb(self, tram, t1_md, resampled, tipo):
         messagebox.showinfo("Demo", "En modo demo no se escribe ningún DICOM.")
 
     def export_pet(self, tram_pet, t1_md, resampled, tipo):
@@ -349,6 +364,7 @@ class DemoBackend:
 # Aplicación
 # --------------------------------------------------------------------------
 STEPS = ["Cargar estudios", "Registración", "TRAM y LUT", "Exportar"]
+MRS_BTN_TEXT = "＋  Agregar estudio de espectroscopia"
 
 
 class NervApp(tk.Tk):
@@ -374,6 +390,8 @@ class NervApp(tk.Tk):
             subtraction=None, tram=None, tram_prev=None, clip=None,
         )
         self.done = set()
+        self._tram_cache = {}
+        self._reset_mrs()
 
     # -- estilo / menú ----------------------------------------------------
     def _style(self):
@@ -430,10 +448,11 @@ class NervApp(tk.Tk):
 
         tk.Frame(side, bg=PANEL).pack(fill="both", expand=True)
         tk.Frame(side, bg=PANEL_HI, height=1).pack(fill="x", padx=16, pady=8)
-        tk.Button(side, text="＋  Agregar estudio de espectroscopia", relief="flat", bd=0, wraplength=190,
-                  justify="left", anchor="w", bg=PANEL_HI, fg=FG, activebackground="#323744",
-                  activeforeground=FG, font=("Segoe UI", 10), padx=14, pady=10, cursor="hand2",
-                  command=self.add_spectroscopy).pack(fill="x", padx=10, pady=(0, 18))
+        self.btn_spectro = tk.Button(side, text=MRS_BTN_TEXT, relief="flat", bd=0,
+                                     wraplength=190, justify="left", anchor="w", bg=PANEL_HI, fg=FG,
+                                     activebackground="#323744", activeforeground=FG, font=("Segoe UI", 10),
+                                     padx=14, pady=10, cursor="hand2", command=self.open_mrs)
+        self.btn_spectro.pack(fill="x", padx=10, pady=(0, 18))
 
         right = ttk.Frame(self)
         right.pack(side="left", fill="both", expand=True)
@@ -446,7 +465,7 @@ class NervApp(tk.Tk):
 
         self.container = ttk.Frame(right)
         self.container.pack(fill="both", expand=True, padx=24, pady=18)
-        self.pages = [self._page_load(), self._page_reg(), self._page_tram(), self._page_export()]
+        self.pages = [self._page_load(), self._page_reg(), self._page_tram(), self._page_export(), self._page_mrs()]
 
     @staticmethod
     def _header(parent, title, subtitle):
@@ -455,6 +474,8 @@ class NervApp(tk.Tk):
 
     # -- navegación -------------------------------------------------------
     def allowed(self, i):
+        if i == 4:  # espectroscopia: solo requiere la T1 cargada
+            return bool(self.s.t1_slices)
         return i == 0 or (i - 1) in self.done
 
     def show_page(self, i):
@@ -468,6 +489,9 @@ class NervApp(tk.Tk):
             self._enter_tram()
         elif i == 3:
             self._enter_export()
+        elif i == 4:
+            self._enter_mrs()
+        self._refresh_mrs_buttons()
         self._refresh_steps()
 
     def _refresh_steps(self):
@@ -480,6 +504,9 @@ class NervApp(tk.Tk):
             else:
                 b.config(bg=PANEL, fg=FG if ok else "#555a66", activebackground=PANEL_HI,
                          activeforeground=FG, disabledforeground="#555a66")
+        on_mrs = getattr(self, "cur", 0) == 4
+        self.btn_spectro.config(bg=ACCENT if on_mrs else PANEL_HI, fg="white" if on_mrs else FG,
+                                activebackground=ACCENT if on_mrs else "#323744")
 
     def busy(self, msg, fn, *a, **k):
         """Ejecuta fn en el hilo principal mostrando cursor de espera y
@@ -505,13 +532,8 @@ class NervApp(tk.Tk):
             for v in (self.view_load, self.view_reg, self.view_tram, self.view_exp):
                 v.clear()
             self.btn_accept_reg.config(state="disabled")
+            self.btn_export_reg.config(state="disabled")
             self.show_page(0)
-
-    def add_spectroscopy(self):
-        messagebox.showinfo(
-            "Espectroscopia",
-            "El módulo de espectroscopia todavía no está implementado.\n\n"
-            "Este botón queda reservado para el próximo paso del desarrollo.")
 
     # ---------------------------------------------------------------- 1
     def _page_load(self):
@@ -552,9 +574,12 @@ class NervApp(tk.Tk):
             return
         lbl = getattr(self, f"lbl_{which}")
         lbl.config(text=path, style="Ok.TLabel")
+        if which == "t1":
+            self._reset_mrs()  # el corte de MRS elegido sobre la T1 anterior ya no vale
         self.done -= {0, 1, 2, 3}
         self.s.tram = self.s.subtraction = None
         self.btn_accept_reg.config(state="disabled")
+        self.btn_export_reg.config(state="disabled")
         self._show_loaded()
 
     def _load_study(self, which, path):
@@ -611,6 +636,9 @@ class NervApp(tk.Tk):
         self.btn_accept_reg = ttk.Button(foot, text="Aceptar registración  →", style="Accent.TButton",
                                          state="disabled", command=self.accept_registration)
         self.btn_accept_reg.pack(side="right")
+        self.btn_export_reg = ttk.Button(foot, text="Exportar registración (.txt)", state="disabled",
+                                         command=self.export_registration)
+        self.btn_export_reg.pack(side="right", padx=8)
         ttk.Label(foot, text="¿No quedó bien? Cambiá el método y ejecutá de nuevo.", style="Dim.TLabel").pack(side="left")
         self._reg_mode_changed()
         self.view_reg.pack(side="top", fill="both", expand=True)
@@ -642,7 +670,11 @@ class NervApp(tk.Tk):
             titles = ["T1 (fija)", "T2 (registrada)"]
         self.view_reg.set_images([s.t1_list, s.t2_list], titles)
         self.btn_accept_reg.config(state="normal")
+        self.btn_export_reg.config(state="normal")
         self._refresh_steps()
+
+    def export_registration(self):
+        self.busy("Exportando archivo de registración…", self.backend.export_registration)
 
     def accept_registration(self):
         s = self.s
@@ -657,6 +689,8 @@ class NervApp(tk.Tk):
         s.subtraction = self.backend.subtract(s.t1_list, s.t2_list)
         s.clip, s.tram_prev = None, None
         s.tram = self.backend.make_tram(s.subtraction, None)
+        self._tram_cache = {None: s.tram}
+        self.m.tram = None  # la vista TRAM+MRS debe tomar el TRAM nuevo
         self._sub_arrays = [slice_to_array(x).astype(float) for x in s.subtraction]
         self._hist_data = np.concatenate([a[::2, ::2].ravel() for a in self._sub_arrays])
         lo, hi = float(self._hist_data.min()), float(self._hist_data.max())
@@ -710,6 +744,8 @@ class NervApp(tk.Tk):
         self.lbl_clip.pack(anchor="w", padx=14, pady=10)
 
         tk.Frame(right, bg=PANEL).pack(fill="both", expand=True)
+        self.btn_tram_mrs = ttk.Button(right, text="Ver con MRS", state="disabled", command=self.open_tram_mrs)
+        self.btn_tram_mrs.pack(fill="x", padx=14)
         ttk.Button(right, text="Aceptar TRAM  →", style="Accent.TButton", command=self.accept_tram).pack(
             fill="x", padx=14, pady=14)
         return f
@@ -788,6 +824,8 @@ class NervApp(tk.Tk):
         foot = ttk.Frame(f)
         foot.pack(side="bottom", fill="x", pady=(10, 0))
         ttk.Button(foot, text="← Volver al TRAM", command=lambda: self.show_page(2)).pack(side="left")
+        self.btn_exp_mrs = ttk.Button(foot, text="Ver con MRS", state="disabled", command=self.open_tram_mrs)
+        self.btn_exp_mrs.pack(side="left", padx=8)
         ttk.Button(foot, text="Guardar TRAM PET-CT (DICOM)", style="Accent.TButton",
                    command=self.save_pet).pack(side="right")
         ttk.Button(foot, text="Guardar TRAM RGB (DICOM)", style="Accent.TButton",
@@ -803,11 +841,325 @@ class NervApp(tk.Tk):
         self.view_exp.set_images([s.tram, self.tram_pet], ["TRAM RGB", "TRAM adaptado a PET-CT"])
 
     def save_rgb(self):
-        self.busy("Guardando TRAM RGB…", self.backend.export_rgb, self.s.tram, self.s.t1_md)
+        s = self.s
+        self.busy("Guardando TRAM RGB…", self.backend.export_rgb, s.tram, s.t1_md, s.resampled, s.tipo)
 
     def save_pet(self):
         s = self.s
         self.busy("Guardando TRAM PET-CT…", self.backend.export_pet, self.tram_pet, s.t1_md, s.resampled, s.tipo)
+
+    # ---------------------------------------------------------------- MRS
+    def _page_mrs(self):
+        f = ttk.Frame(self.container)
+        self._header(f, "Espectroscopia (MRS)",
+                     "Cargá las capturas de MRS, buscá el corte de la T1 que les corresponde y confirmalo. "
+                     "El índice queda guardado para ver luego el mismo corte del TRAM junto a la MRS.")
+        top = ttk.Frame(f)
+        top.pack(fill="x", pady=(0, 8))
+        ttk.Button(top, text="1 · Cargar capturas…", command=self.mrs_load).pack(side="left")
+        self.lbl_mrs_caps = ttk.Label(top, text="Sin capturas", style="Dim.TLabel")
+        self.lbl_mrs_caps.pack(side="left", padx=12)
+        self.btn_mrs_find = ttk.Button(top, text="2 · Buscar corte en la T1", style="Accent.TButton",
+                                       state="disabled", command=self.mrs_find)
+        self.btn_mrs_find.pack(side="left")
+
+        foot = ttk.Frame(f)
+        foot.pack(side="bottom", fill="x", pady=(10, 0))
+        self.btn_mrs_confirm = ttk.Button(foot, text="Confirmar corte", style="Accent.TButton",
+                                          state="disabled", command=self.mrs_confirm)
+        self.btn_mrs_confirm.pack(side="right")
+        self.btn_mrs_reselect = ttk.Button(foot, text="Reelegir corte", state="disabled",
+                                           command=self._mrs_start_selection)
+        self.btn_mrs_reselect.pack(side="right", padx=8)
+        self.lbl_mrs_status = ttk.Label(foot, text="", style="Ok.TLabel")
+        self.lbl_mrs_status.pack(side="left")
+
+        body = ttk.Frame(f)
+        body.pack(side="top", fill="both", expand=True)
+        card = ttk.Frame(body, style="Card.TFrame", width=330)
+        card.pack(side="right", fill="y", padx=(16, 0))
+        card.pack_propagate(False)
+        self.view_mrs = SliceViewer(body)
+        self.view_mrs.pack(side="left", fill="both", expand=True)
+        self.view_mrs.on_change = self._mrs_on_change
+
+        ttk.Label(card, text="Corte de la MRS", style="Card.TLabel",
+                  font=("Segoe UI", 10, "bold")).pack(anchor="w", padx=14, pady=(14, 4))
+        self.lbl_mrs_info = ttk.Label(card, text="", style="CardDim.TLabel", wraplength=295, justify="left")
+        self.lbl_mrs_info.pack(anchor="w", padx=14)
+
+        # selector de imagen izquierda (T1 / TRAM) y controles del TRAM; se muestran solo al comparar
+        self.mrs_base = tk.StringVar(value="t1")
+        self.mrs_base_row = ttk.Frame(card, style="Card.TFrame")
+        ttk.Label(self.mrs_base_row, text="Izquierda:", style="CardDim.TLabel").pack(side="left", padx=(0, 10))
+        ttk.Radiobutton(self.mrs_base_row, text="T1", value="t1", variable=self.mrs_base,
+                        style="Card.TRadiobutton", command=self._mrs_refresh_compare).pack(side="left", padx=(0, 10))
+        self.rb_mrs_tram = ttk.Radiobutton(self.mrs_base_row, text="TRAM", value="tram", variable=self.mrs_base,
+                                           style="Card.TRadiobutton", command=self._mrs_refresh_compare)
+        self.rb_mrs_tram.pack(side="left")
+
+        self.mrs_tram_box = ttk.Frame(card, style="Card.TFrame")
+        ttk.Label(self.mrs_tram_box, text="Histograma del corte (resta)", style="Card.TLabel",
+                  font=("Segoe UI", 9, "bold")).pack(anchor="w", pady=(0, 2))
+        self.mfig = Figure(figsize=(3.1, 1.6), dpi=100, facecolor=PANEL)
+        self.mcanvas = FigureCanvasTkAgg(self.mfig, master=self.mrs_tram_box)
+        self.mcanvas.get_tk_widget().configure(bg=PANEL, highlightthickness=0)
+        self.mcanvas.get_tk_widget().pack(fill="x")
+        ttk.Label(self.mrs_tram_box, text="Recorte: intensidad (ej. 300) o percentil (ej. 5%)",
+                  style="CardDim.TLabel", wraplength=295, justify="left").pack(anchor="w", pady=(6, 2))
+        row = ttk.Frame(self.mrs_tram_box, style="Card.TFrame")
+        row.pack(fill="x")
+        self.mrs_clip_var = tk.StringVar()
+        e = ttk.Entry(row, textvariable=self.mrs_clip_var, width=10)
+        e.pack(side="left", fill="x", expand=True)
+        e.bind("<Return>", lambda ev: self.mrs_apply_clip())
+        ttk.Button(row, text="Aplicar", padding=(8, 5), command=self.mrs_apply_clip).pack(side="left", padx=(6, 0))
+        ttk.Button(row, text="Quitar", padding=(8, 5),
+                   command=lambda: self.mrs_apply_clip(reset=True)).pack(side="left", padx=(4, 0))
+        self.lbl_mrs_clip = ttk.Label(self.mrs_tram_box, text="Sin recorte", style="CardDim.TLabel")
+        self.lbl_mrs_clip.pack(anchor="w", pady=(6, 0))
+        ttk.Button(self.mrs_tram_box, text="Usar como TRAM final", command=self.mrs_adopt_clip).pack(fill="x", pady=(6, 0))
+        self._mrs_set_idle_ui()
+        return f
+
+    # -- estado -------------------------------------------------------------
+    def _reset_mrs(self):
+        """Descarta capturas, índice y cortes de la T1 (al cargar una T1 nueva o empezar de cero)."""
+        self.m = SimpleNamespace(captures=None, arrays=None, candidates=None, start=None, index=None,
+                                 score=None, note="", mode="idle", tram=None, clip=None)
+        if hasattr(self, "view_mrs"):
+            self.mrs_base.set("t1")
+            self.view_mrs.clear()
+            self.lbl_mrs_caps.config(text="Sin capturas", style="Dim.TLabel")
+            self.btn_mrs_find.config(state="disabled")
+            self.lbl_mrs_status.config(text="")
+            self._mrs_set_idle_ui()
+        if hasattr(self, "btn_spectro"):
+            self.btn_spectro.config(text=MRS_BTN_TEXT)
+            self._refresh_mrs_buttons()
+
+    def _mrs_set_idle_ui(self):
+        self.m.mode = "idle"
+        self.btn_mrs_confirm.config(state="disabled")
+        self.btn_mrs_reselect.config(state="disabled")
+        self.mrs_base_row.pack_forget()
+        self.mrs_tram_box.pack_forget()
+        self.lbl_mrs_info.config(text="Cargá las capturas y buscá el corte para empezar.")
+
+    def _mrs_module(self):
+        try:
+            import espectroscopia
+            return espectroscopia
+        except Exception as e:  # noqa: BLE001
+            traceback.print_exc()
+            messagebox.showerror(
+                "Espectroscopia",
+                "No se pudo cargar espectroscopia.py. Verificá que esté en la carpeta del proyecto y "
+                f"que OpenCV esté instalado (pip install opencv-python).\n\n{type(e).__name__}: {e}")
+            return None
+
+    @staticmethod
+    def _rgb(captura):
+        """Las capturas vienen de cv2.imread (BGR): se pasan a RGB para mostrarlas."""
+        c = np.asarray(captura)
+        return np.ascontiguousarray(c[..., ::-1]) if c.ndim == 3 else c
+
+    def _tram_ready(self):
+        s, m = self.s, self.m
+        return (s.tram is not None and s.subtraction is not None and m.index is not None
+                and m.index < len(s.tram))
+
+    def _refresh_mrs_buttons(self):
+        st = "normal" if (self.m.index is not None and self.s.tram is not None) else "disabled"
+        for b in (getattr(self, "btn_tram_mrs", None), getattr(self, "btn_exp_mrs", None)):
+            if b is not None:
+                b.config(state=st)
+
+    # -- flujo --------------------------------------------------------------
+    def open_mrs(self):
+        if not self.s.t1_slices:
+            messagebox.showinfo("Espectroscopia", "Primero cargá la resonancia T1 (paso 1).")
+            return
+        self.show_page(4)
+
+    def open_tram_mrs(self):
+        if self.m.index is None or self.s.tram is None:
+            return
+        self.mrs_base.set("tram")
+        self.show_page(4)
+
+    def _enter_mrs(self):
+        if self.m.mode == "compare":
+            self._mrs_refresh_compare()
+
+    def mrs_load(self):
+        mrs = self._mrs_module()
+        if mrs is None:
+            return
+        caps = self.busy("Cargando capturas de MRS…", mrs.cargar_capturas_mrs)
+        if caps is _FAIL or not caps:
+            return
+        self._reset_mrs()
+        self.m.captures = caps
+        self.lbl_mrs_caps.config(text=f"{len(caps)} captura(s)", style="Ok.TLabel")
+        self.btn_mrs_find.config(state="normal")
+        self.view_mrs.unit = "Captura"
+        self.view_mrs.set_images([[self._rgb(c) for c in caps]], ["Capturas de MRS"])
+
+    def mrs_find(self):
+        mrs = self._mrs_module()
+        if mrs is None or not self.m.captures:
+            return
+        m = self.m
+        if m.arrays is None:
+            arr = self.busy("Preparando los cortes de la T1…", self.backend.to_arrays, self.s.t1_img)
+            if arr is _FAIL:
+                return
+            m.arrays = arr
+        res = self.busy("Buscando el corte de la T1 que coincide con la MRS…",
+                        mrs.buscar_corte_t1, m.arrays, m.captures[0])
+        if res is _FAIL:
+            return
+        idx, score = res
+        n = len(m.arrays)
+        m.score = score
+        if idx is not None:
+            m.candidates = mrs.generar_candidatos_t1(idx, n, 7)
+            m.start = idx
+            m.note = (f"Corte sugerido: {idx + 1} (correlación {score:.2f}). Revisá los candidatos con ◀ ▶ "
+                      "y confirmá el que corresponda.")
+        else:
+            m.candidates = list(range(n))
+            m.start = n // 2
+            m.note = (f"No hay una coincidencia suficiente con la T1 (mejor correlación {score:.2f}). "
+                      "Planificación sobre otra secuencia (p. ej. T2-FLAIR): elegí el corte manualmente.")
+        m.index = None
+        self._mrs_start_selection()
+
+    def _mrs_start_selection(self):
+        m = self.m
+        if m.arrays is None or not m.candidates:
+            return
+        start = m.index if m.index in m.candidates else m.start
+        m.mode = "select"
+        cap = self._rgb(m.captures[0])
+        self.view_mrs.unit = "Candidato"
+        self.view_mrs.set_images([[m.arrays[i] for i in m.candidates], [cap] * len(m.candidates)],
+                                 ["T1 — corte candidato", "MRS — captura de referencia"])
+        self.view_mrs.goto(m.candidates.index(start))
+        self._mrs_mode_ui()
+
+    def mrs_confirm(self):
+        m = self.m
+        if m.mode != "select":
+            return
+        m.index = m.candidates[self.view_mrs.idx]
+        self.lbl_mrs_status.config(text=f"✓ Corte {m.index + 1} confirmado")
+        self.btn_spectro.config(text=f"✓  Espectroscopia — corte {m.index + 1}")
+        self.status.set(f"Espectroscopia: corte {m.index + 1} de la T1 guardado")
+        self._refresh_mrs_buttons()
+        m.mode = "compare"
+        self._mrs_refresh_compare()
+
+    # -- comparación (T1 o TRAM, fijo, junto a las capturas) ----------------
+    def _mrs_refresh_compare(self, keep=False):
+        s, m = self.s, self.m
+        if m.index is None:
+            return
+        use_tram = self.mrs_base.get() == "tram" and self._tram_ready()
+        if use_tram:
+            if m.tram is None:  # primera vez: parte del TRAM vigente
+                m.tram, m.clip = s.tram, s.clip
+                self.mrs_clip_var.set(s.clip or "")
+                self.lbl_mrs_clip.config(text=f"Recorte en esta vista: {m.clip}" if m.clip else "Sin recorte")
+            base, title = m.tram[m.index], f"TRAM — corte {m.index + 1}"
+        else:
+            base, title = m.arrays[m.index], f"T1 — corte {m.index + 1}"
+        caps = [self._rgb(c) for c in m.captures]
+        idx = self.view_mrs.idx if keep else 0
+        m.mode = "compare"
+        self.view_mrs.unit = "Captura"
+        self.view_mrs.set_images([[base] * len(caps), caps], [title, "MRS — capturas"])
+        self.view_mrs.goto(idx)
+        self._mrs_mode_ui()
+        if use_tram:
+            self._mrs_draw_hist()
+
+    def _mrs_mode_ui(self):
+        m = self.m
+        self.mrs_base_row.pack_forget()
+        self.mrs_tram_box.pack_forget()
+        self.btn_mrs_confirm.config(state="normal" if m.mode == "select" else "disabled")
+        self.btn_mrs_reselect.config(state="normal" if (m.mode == "compare" and m.candidates) else "disabled")
+        if m.mode == "compare":
+            ready = self._tram_ready()
+            self.rb_mrs_tram.config(state="normal" if ready else "disabled")
+            if not ready:
+                self.mrs_base.set("t1")
+            self.mrs_base_row.pack(fill="x", padx=14, pady=(14, 0))
+            if self.mrs_base.get() == "tram":
+                self.mrs_tram_box.pack(fill="x", padx=14, pady=(10, 0))
+        self._mrs_on_change(self.view_mrs.idx)
+
+    def _mrs_on_change(self, idx):
+        m = self.m
+        n = len(m.arrays) if m.arrays else 0
+        if m.mode == "select":
+            self.lbl_mrs_info.config(
+                text=f"Candidato {idx + 1} de {len(m.candidates)}  ·  corte {m.candidates[idx] + 1} de {n}\n\n{m.note}")
+        elif m.mode == "compare":
+            extra = "\nTRAM en el mismo índice que la T1." if self.mrs_base.get() == "tram" else ""
+            self.lbl_mrs_info.config(
+                text=f"Corte confirmado: {m.index + 1} de {n}\nCaptura {idx + 1} de {len(m.captures)}{extra}")
+
+    # -- histograma y recorte del TRAM en esta vista --------------------------
+    def _mrs_draw_hist(self):
+        m = self.m
+        if self.s.subtraction is None or not hasattr(self, "_sub_arrays") or m.index is None \
+                or m.index >= len(self._sub_arrays):
+            return
+        self.mfig.clear()
+        ax = self.mfig.add_subplot(111)
+        ax.set_facecolor(VIEW_BG)
+        ax.hist(self._sub_arrays[m.index].ravel(), bins=self._hist_bins, color=ACCENT, log=True)
+        ax.set_xlim(self._hist_bins[0], self._hist_bins[-1])
+        ax.set_title(f"Corte {m.index + 1}", color=FG_DIM, fontsize=8, pad=3)
+        ax.tick_params(colors=FG_DIM, labelsize=7)
+        for sp in ax.spines.values():
+            sp.set_color(PANEL_HI)
+        self.mfig.subplots_adjust(left=0.14, right=0.97, bottom=0.16, top=0.88)
+        self.mcanvas.draw_idle()
+
+    def mrs_apply_clip(self, reset=False):
+        txt = None
+        if reset:
+            self.mrs_clip_var.set("")
+        else:
+            txt = self.mrs_clip_var.get().strip().lower()
+            if not txt:
+                return
+            try:
+                float(txt[:-1] if txt.endswith("%") else txt)
+            except ValueError:
+                messagebox.showwarning("Recorte inválido", "Ingresá un número (ej. 300) o un porcentaje (ej. 5%).")
+                return
+        self.busy("Aplicando recorte…", self._mrs_set_clip, txt)
+
+    def _mrs_set_clip(self, clip):
+        if clip not in self._tram_cache:
+            self._tram_cache[clip] = self.backend.make_tram(self.s.subtraction, clip)
+        self.m.tram, self.m.clip = self._tram_cache[clip], clip
+        self.lbl_mrs_clip.config(text=f"Recorte en esta vista: {clip}" if clip else "Sin recorte")
+        self._mrs_refresh_compare(keep=True)
+
+    def mrs_adopt_clip(self):
+        """El recorte de esta vista es exploratorio; con este botón pasa a ser el TRAM que se exporta."""
+        s, m = self.s, self.m
+        if m.tram is None:
+            return
+        s.tram, s.clip, s.tram_prev = m.tram, m.clip, None
+        self.lbl_clip.config(text=f"Recorte actual: {m.clip}" if m.clip else "Sin recorte")
+        self.status.set("El TRAM de esta vista se usará para exportar")
 
 
 # --------------------------------------------------------------------------
